@@ -179,7 +179,7 @@ function CalendarProcess  ([String] $holidayApproverEmail, [String] $holidayRequ
         write-host "Appointment Already Excists in $holidayRequesterEmail - Skipping" -foregroundcolor "Gray"
     } else {
         ##NOT ADDED SO ADD THIS HOLIDAY APPOINTMENT
-        NewHolidayAppointment $holidayRequesterEmail $uid $holidayStarts $holidayEnds $holidayRequesterFullName $holidayRequestersComments 'OOH'
+        NewHolidayAppointment $holidayRequesterEmail $uid $holidayStarts $holidayEnds $holidayRequesterFullName $holidayRequestersComments 'OOF'
     }
 
 
