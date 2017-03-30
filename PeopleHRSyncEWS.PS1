@@ -15,7 +15,7 @@
 
 
     #Log
-    $logLocation = '\\server\support\Logs\peopleHR.log'
+    $logLocation = '\\server\Logs\peopleHR.log'
 
     #ArrArray
     $global:uidArr = @()
@@ -152,34 +152,26 @@ function CalendarProcess  ([String] $holidayApproverEmail, [String] $holidayRequ
     $uid = GenerateUID $holidayRequesterEmail $holidayStarts,$holidayEnds 
 
     ####################################################################################
-    #REMOVES LEGACY ENTRIES
-    ####################################################################################
-
-    ##REMOVE ANY LEGACY ENTRIES FROM REQUESTER
-    RemoveLegacyEntries $holidayRequesterEmail $uid $holidayStarts $holidayEnds
-
-    ##REMOVE ANY LEGACY ENTRIES FROM APPROVER
-    RemoveLegacyEntries $holidayApproverEmail $uid $holidayStarts $holidayEnds
-
-    ##REMOVE LEGACY ENTRIES FROM ANY ADDITIONAL ACCOUNTS
-    foreach($additionalAccount in $additionalAccounts){
-       RemoveLegacyEntries $additionalAccount $uid $holidayStarts $holidayEnds
-    }
-
-
-    ####################################################################################
     #ADDS INTO REQUESTER MAILBOX
     ####################################################################################
 
     ##CHECK IF THIS APPOINTMENT IS ALREADY IN THE REQUESTERS MAILBOX
+
+    Try{
+    
     $appointment = CheckForHolidayAppointments $holidayRequesterEmail $uid $holidayStarts $holidayEnds
 
-    if($appointment){
-        ##IF APPOINTMENT WAS FOUND ALREADY
-        write-host "Appointment Already Excists in $holidayRequesterEmail - Skipping" -foregroundcolor "Gray"
+    if($appointment) {
+         ##IF APPOINTMENT WAS FOUND ALREADY
+         write-host "Holiday Already Excists in $holidayRequesterEmail - Skipping" -foregroundcolor "Gray"
     } else {
-        ##NOT ADDED SO ADD THIS HOLIDAY APPOINTMENT
-        NewHolidayAppointment $holidayRequesterEmail $uid $holidayStarts $holidayEnds $holidayRequesterFullName $holidayRequestersComments 'OOF'
+         ##NOT ADDED SO ADD THIS HOLIDAY APPOINTMENT
+         NewHolidayAppointment $holidayRequesterEmail $uid $holidayStarts $holidayEnds $holidayRequesterFullName $holidayRequestersComments 'OOF'
+    }
+
+    }
+    Catch{
+    write-host "Error accessing $holidayRequesterEmail"
     }
 
 
@@ -188,15 +180,25 @@ function CalendarProcess  ([String] $holidayApproverEmail, [String] $holidayRequ
     ####################################################################################
 
     ##CHECK IF THIS APPOINTMENT IS ALREADY IN THE APPROVER MAILBOX
-    $appointment = CheckForHolidayAppointments $holidayApproverEmail $uid $holidayStarts $holidayEnds
 
-    if($appointment){
-        ##IF APPOINTMENT WAS FOUND ALREADY
-        write-host "Appointment Already Excists in $holidayRequesterEmail - Skipping" -foregroundcolor "Gray"
-    } else {
-        ##NOT ADDED SO ADD THIS HOLIDAY APPOINTMENT
-        NewHolidayAppointment $holidayApproverEmail $uid $holidayStarts $holidayEnds $holidayRequesterFullName $holidayRequestersComments 'Free'
-    }
+     if($holidayApproverEmail.length -gt 5){    
+        Try{
+
+        $appointment = CheckForHolidayAppointments $holidayApproverEmail $uid $holidayStarts $holidayEnds
+
+        if($appointment){
+             ##IF APPOINTMENT WAS FOUND ALREADY
+             write-host "Holiday Already Excists in $holidayApproverEmail - Skipping" -foregroundcolor "Gray"
+         } else {
+             ##NOT ADDED SO ADD THIS HOLIDAY APPOINTMENT
+             NewHolidayAppointment $holidayApproverEmail $uid $holidayStarts $holidayEnds $holidayRequesterFullName '' 'Free'
+         }
+     
+         }
+         Catch{
+         write-host "Error Accessing $holidayApproverMail"
+         }
+     }
 
     ####################################################################################
     #ADDS INTO ADDITIONAL ACCOUNT MAILBOX
@@ -208,10 +210,10 @@ function CalendarProcess  ([String] $holidayApproverEmail, [String] $holidayRequ
 
         if($appointment){
             ##IF APPOINTMENT WAS FOUND ALREADY
-            write-host "Appointment Already Excists in $additionalAccount - Skipping" -foregroundcolor "Gray"
+            write-host "Holiday Already Excists in $additionalAccount - Skipping" -foregroundcolor "Gray"
         } else {
             ##NOT ADDED SO ADD THIS HOLIDAY APPOINTMENT
-            NewHolidayAppointment $additionalAccount $uid $holidayStarts $holidayEnds $holidayRequesterFullName $holidayRequestersComments 'Free'
+            NewHolidayAppointment $additionalAccount $uid $holidayStarts $holidayEnds $holidayRequesterFullName '' 'Free'
         }
 
 
@@ -226,7 +228,7 @@ function CalendarProcess  ([String] $holidayApproverEmail, [String] $holidayRequ
 
 function RemoveLegacyEntries  ([String] $Mailbox, [String] $uid, [string] $starts, [string] $ends  ){
 
-    write-host "Looking for legacy entries in $mailbox for $starts and $ends"
+    write-host "Looking for legacy entry in $mailbox for $starts and $ends"
     $folderid= new-object Microsoft.Exchange.WebServices.Data.FolderId([Microsoft.Exchange.WebServices.Data.WellKnownFolderName]::Calendar,$Mailbox)   
     $calendarFolder = [Microsoft.Exchange.WebServices.Data.calendarFolder]::Bind($service, $folderid)
     $calendarView = new-object Microsoft.Exchange.WebServices.Data.CalendarView($starts, $ends)
@@ -238,6 +240,7 @@ function RemoveLegacyEntries  ([String] $Mailbox, [String] $uid, [string] $start
 
     foreach($CalendarAppointment in $CalendarAppointments){
 
+      Try{
       $PropertySet = New-Object Microsoft.Exchange.WebServices.Data.PropertySet([Microsoft.Exchange.WebServices.Data.BasePropertySet]::FirstClassProperties)
       $PropertySet.RequestedBodyType = [Microsoft.Exchange.WebServices.Data.BodyType]::Text
       $CalendarAppointment.Load($PropertySet)
@@ -248,6 +251,10 @@ function RemoveLegacyEntries  ([String] $Mailbox, [String] $uid, [string] $start
         write-log "Deleting Legacy Appointment from mailbox $Mailbox"
         $CalendarAppointment.Delete([Microsoft.Exchange.WebServices.Data.DeleteMode]::SoftDelete)
 
+      }
+      }
+      Catch{
+      ##IGNORE, DODGY EVENT IN CALENDER
       }
 
 
@@ -261,37 +268,47 @@ function RemoveLegacyEntries  ([String] $Mailbox, [String] $uid, [string] $start
 
 function CheckForHolidayAppointments  ([String] $Mailbox, [String] $uid, [string] $starts, [string] $ends ){
 
-    $folderid= new-object Microsoft.Exchange.WebServices.Data.FolderId([Microsoft.Exchange.WebServices.Data.WellKnownFolderName]::Calendar,$Mailbox)   
+        $folderid= new-object Microsoft.Exchange.WebServices.Data.FolderId([Microsoft.Exchange.WebServices.Data.WellKnownFolderName]::Calendar,$Mailbox)   
  
-    $newEnd = [datetime]$ends
-    $newEnd = $newEnd.AddDays(1)
-    $ends = $newEnd.toString('yyyy-MM-dd')
+        $newEnd = [datetime]$ends
+        $newEnd = $newEnd.AddDays(1)
+        $ends = $newEnd.toString('yyyy-MM-dd')
 
-    $Start = "${starts}T00:00:00Z"
-    $End = "${ends}T00:00:00Z"
+        $Start = "${starts}T00:00:00Z"
+        $End = "${ends}T00:00:00Z"
 
-    if($refresh -eq 'true'){
-        $uid = 'none'
-    }
-
-    $calendarFolder = [Microsoft.Exchange.WebServices.Data.calendarFolder]::Bind($service, $folderid)
-    $calendarView = new-object Microsoft.Exchange.WebServices.Data.CalendarView($Start,$End)
-    $calendarView.MaxItemsReturned = 200;
-    $calendarView.PropertySet = new-object Microsoft.Exchange.WebServices.Data.PropertySet([Microsoft.Exchange.WebServices.Data.BasePropertySet]::FirstClassProperties)
-    $calendarEvents = $calendarFolder.FindAppointments($calendarView)        
-    $CalendarAppointments = $calendarEvents 
-
-    foreach($CalendarAppointment in $CalendarAppointments){
-
-        $psPropSet = new-object Microsoft.Exchange.WebServices.Data.PropertySet([Microsoft.Exchange.WebServices.Data.BasePropertySet]::FirstClassProperties);
-        $CalendarAppointment.Load($psPropSet);
-        if($CalendarAppointment.ICalUid -like "*${uid}*"){
-           return $CalendarAppointment          
+        if($refresh -eq 'true'){
+            $uid = 'none'
         }
 
+        $calendarFolder = [Microsoft.Exchange.WebServices.Data.calendarFolder]::Bind($service, $folderid)
+        $calendarView = new-object Microsoft.Exchange.WebServices.Data.CalendarView($Start,$End)
+        $calendarView.MaxItemsReturned = 200;
+        $calendarView.PropertySet = new-object Microsoft.Exchange.WebServices.Data.PropertySet([Microsoft.Exchange.WebServices.Data.BasePropertySet]::FirstClassProperties)
+        $calendarEvents = $calendarFolder.FindAppointments($calendarView)        
+        $CalendarAppointments = $calendarEvents 
 
-    }
+        foreach($CalendarAppointment in $CalendarAppointments){
 
+            Try{
+            $psPropSet = new-object Microsoft.Exchange.WebServices.Data.PropertySet([Microsoft.Exchange.WebServices.Data.BasePropertySet]::FirstClassProperties);
+            $CalendarAppointment.Load($psPropSet);
+            if($CalendarAppointment.ICalUid -like "*${uid}*"){
+               return $CalendarAppointment          
+            }
+            }
+            Catch{
+            #IGNORE
+            }
+           
+
+
+        }
+
+      
+     
+
+     
 }
 
 ##########################################################################################
@@ -301,6 +318,8 @@ function CheckForHolidayAppointments  ([String] $Mailbox, [String] $uid, [string
 
 function CheckForHolidayDeletedAppointments ([String] $holidayRequesterFullName, [String] $Mailbox ){
  
+    write-host "Checking for $holidayRequesterFullName Holidays for deletion in $mailbox" -foregroundcolor Gray
+
     $year = get-date –format yyyy
     $starts = "$year-01-01"
     $ends = "$year-12-31"
@@ -313,6 +332,8 @@ function CheckForHolidayDeletedAppointments ([String] $holidayRequesterFullName,
     $calendarEvents = $calendarFolder.FindAppointments($calendarView)        
     $CalendarAppointments = $calendarEvents 
 
+    #write-host $global:uidArr
+
     foreach($CalendarAppointment in $CalendarAppointments){
         
         Try
@@ -321,21 +342,19 @@ function CheckForHolidayDeletedAppointments ([String] $holidayRequesterFullName,
             $PropertySet.RequestedBodyType = [Microsoft.Exchange.WebServices.Data.BodyType]::Text
             $CalendarAppointment.Load($PropertySet)
             $bodyText= $CalendarAppointment.Body.toString()
+            $subjectText = $CalendarAppointment.Subject.toString()
 
             if($bodyText -like "*PeopleHR Holiday Sync*"){
 
-                if($global:uidArr -contains $CalendarAppointment.ICalUid){
-                  if($refresh -eq 'true'){
-                        $dUID = $CalendarAppointment.ICalUid.toString()
-                        write-log "Deleting Holiday for $holidayRequesterFullName in $Mailbox [$dUID]" 
-                        write-host "Deleting Holiday for $holidayRequesterFullName in $Mailbox" -foregroundcolor "Red"
-                        $CalendarAppointment.Delete([Microsoft.Exchange.WebServices.Data.DeleteMode]::SoftDelete)
-                  }
+                
+                ##CHECK UID AND REQUESTER NAME
+                if($global:uidArr -contains $CalendarAppointment.ICalUid -or $subjectText -notlike "*${holidayRequesterFullName}*"){
+
                     
                 }else{
                     $dUID = $CalendarAppointment.ICalUid.toString()
-                    write-log "Deleting Holiday for $holidayRequesterFullName in $Mailbox [$dUID]" 
-                    write-host "Deleting Holiday for $holidayRequesterFullName in $Mailbox" -foregroundcolor "Red"
+                    write-log "Deleting Holiday for $holidayRequesterFullName in $Mailbox with UID [$dUID]" 
+                    write-host "Deleting Holiday for $holidayRequesterFullName in $Mailbox with UID [$dUID] and subject $subjectText" -foregroundcolor "Red"
                     $CalendarAppointment.Delete([Microsoft.Exchange.WebServices.Data.DeleteMode]::SoftDelete)
                 }
             }
@@ -414,7 +433,6 @@ function MainCodeBlock(){
             $global:uidArr+=$uid
 
             ##SET UP SOME INITIAL VARS 
-
             $holidayStarts = $holiday.StartDate
             $holidayEnds = $holiday.EndDate
           
@@ -434,21 +452,18 @@ function MainCodeBlock(){
             }
 
 
-
         }
 
 
-         ##CHECK FOR ANY APPOINTMENTS WHERE THE UID IS NOT IN PEOPLEHR
+          ##CHECK FOR ANY APPOINTMENTS WHERE THE UID IS NOT IN PEOPLEHR
+          CheckForHolidayDeletedAppointments $holidayRequesterFullName $holidayRequesterEmail
+          CheckForHolidayDeletedAppointments $holidayRequesterFullName $holidayApproverEmail
 
-            CheckForHolidayDeletedAppointments $holidayRequesterFullName $holidayRequesterEmail
-            CheckForHolidayDeletedAppointments $holidayRequesterFullName $holidayApproverEmail
+          ##ALSO CHECK ANY ADDITIONAL ACCOUNTS
+          foreach($additionalAccount in $additionalAccounts){
+            CheckForHolidayDeletedAppointments $holidayRequesterFullName $additionalAccount
+          }
 
-            ##ALSO CHECK ANY ADDITIONAL ACCOUNTS
-            foreach($additionalAccount in $additionalAccounts){
-                CheckForHolidayDeletedAppointments $holidayRequesterFullName $additionalAccount
-            }
-
-    
 
     }
 
@@ -456,11 +471,3 @@ function MainCodeBlock(){
 }
 
 MainCodeBlock
-
-
-
-
-  
-
-
-
