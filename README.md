@@ -2,11 +2,13 @@
 Automate Calendar events for PeopleHR Holidays
 
 Install https://www.microsoft.com/en-us/download/details.aspx?id=35371
-on the server that will be running script. 
+on the server that will be running script. This is required to Access EWS
 
-Input your password and username into BOTH Scripts
+Input your password and username into the main script 
 
-Run PeopleHRSync-MakeOwner.PS1 
+The Make-Owner script can be adapted, it is capable of storing admin credentials but could be run manually. We dont recommend storing admin credentials for O365 in plain text on the script. 
+
+Run PeopleHRSync-MakeOwner.PS1 , This loops through all your mailboxes and ensures your PeopleHR mailbox is able to add calandar events.
 
 this will give your dedicated service account Ownership over all mailboxes so it can add and delete appointments
 
